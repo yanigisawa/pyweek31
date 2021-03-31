@@ -85,19 +85,12 @@ class Car(pg.sprite.Sprite):
         screen.blit(self.image, rect)
 
     def stop(self, velocity):
-        if self._left_right_vel == 0 and self._up_down_vel == 0:
-            return
-
-        self._left_right_vel = velocity[0] # ["left"]
-        self._up_down_vel = velocity[1] # ["down"]
+        new_vel = self.body.velocity - velocity
         self.body.velocity -= velocity
 
 
     def move(self, velocity):
-        if self._left_right_vel != 0 and self._up_down_vel != 0:
-            return
-        self._left_right_vel = velocity[0] # ["left"]
-        self._up_down_vel = velocity[1] # ["down"]
+        new_vel = self.body.velocity + velocity
         self.body.velocity += velocity
 
     def __str__(self):
@@ -117,7 +110,7 @@ class Game:
         self._space.add(self._red_car.body, self._red_car.shape)
         self._blue_car = Car(position=(350, 350))
         self._space.add(self._blue_car.body, self._blue_car.shape)
-        self._rotate = False
+        self._shift_key_down = False
 
     def _clear_screen(self):
         self._screen.fill(pg.Color((100, 100, 100)))
@@ -187,34 +180,32 @@ class Game:
 
 
         if event.key == pg.K_RSHIFT:
-            self._rotate = True
+            self._shift_key_down = True
 
         if event.key in self.keys:
-            if self._rotate:
-                direction = self.keys[event.key]["rotation"] * (math.pi / 3)
-                self._blue_car.body.angular_velocity = direction
+            if self._shift_key_down:
+                self._blue_car.body.angle = 0
+                self._blue_car.body.angular_velocity = 0
+                # direction = self.keys[event.key]["rotation"] * (math.pi / 3)
+                # self._blue_car.body.angular_velocity = direction
                 return
 
-            # v = Vec2d(*keys[event.key]["velocity"]) * 20
-            # self._blue_car.body.position += v
             self._blue_car.move(self.keys[event.key]["velocity"])
-            # self._blue_car.body.velocity += self.keys[event.key]["velocity"]
 
         if event.key == pg.K_SPACE:
             self._blue_car.body.angular_velocity = 0
             self._blue_car.body.velocity = 0, 0
 
 
-
     def on_keyup(self, event):
+
         if event.key == pg.K_RSHIFT:
-            self._rotate = False
+            self._shift_key_down = False
 
         if event.key in self.keys:
-            if event.key in [pg.K_LEFT, pg.K_RIGHT]:
+            if event.key in [pg.K_LEFT, pg.K_RIGHT] and self._shift_key_down:
                 self._blue_car.body.angular_velocity = 0
-
-            if self._rotate:
+                self._blue_car.body.angle = 0
                 return
 
             self._blue_car.stop(self.keys[event.key]["velocity"])
