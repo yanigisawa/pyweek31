@@ -2,15 +2,29 @@ import math
 import sys
 import pygame as pg
 from pygame.constants import SCRAP_SELECTION
+from pygame.display import update
 import pymunk
 import pymunk.pygame_util
 from pymunk.vec2d import Vec2d
+from .pygame_functions import *
+
+setAutoUpdate(False)
 
 from . import config
+
+
+
+def tuple_add(tup1, tup2):
+    return tup1[0] + tup2[0], tup1[1] + tup2[1]
+
+def tuple_subtract(tup1, tup2):
+    return tup1[0] - tup2[0], tup1[1] - tup2[1]
+
 
 class GameWindow:
 
     def __init__(self):
+        screenSize(config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
         pg.display.set_caption('TODO')
         self.screen = pg.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
         self.game()
@@ -38,16 +52,9 @@ class GameWindow:
         #     ending = Ending(self, self.screen)
         #     ending.loop()
 
-def get_pygame_coordinates_from_position(position):
-    return int(position[0]), config.SCREEN_HEIGHT - int(position[1]) # - config.SCREEN_HEIGHT
-
-def flipy(p):
-    """Convert chipmunk coordinates to pygame coordinates."""
-    return Vec2d(p[0], config.SCREEN_HEIGHT - p[1])
-
-
 class Car(pg.sprite.Sprite):
     def __init__(self, size=(50, 100), mass=1, position=(100, 200), color=(0, 0, 255)):
+        super().__init__()
         self.body = pymunk.Body()
 
         self.body.position = Vec2d(*position)
@@ -59,15 +66,28 @@ class Car(pg.sprite.Sprite):
 
         self.image = pg.Surface(size, pg.SRCALPHA)
         self.image.fill(color)
+        self.rect = self.image.get_rect(center=position)
         self._orig_image = self.image
         self.color = color
         self._velocity = (0, 0)
 
-    def draw(self, screen):
-        left, top = get_pygame_coordinates_from_position(self.body.position)
-        left = left - self._width / 2
-        top = top - self._height / 2
+    def update(self):
+        # shape = self.shape
+        # ps = [
+        #     pos.rotated(shape.body.angle) + shape.body.position
+        #     for pos in shape.get_vertices()
+        # ]
+        # ps.append(ps[0])
+        # left, top = ps[3][0], ps[3][1]
 
+        self.image = pg.transform.rotozoom(
+            self._orig_image,
+            -math.degrees(self.body.angle),
+            1
+            )
+        self.rect = self.image.get_rect(center=self.body.position)
+
+    def draw(self, screen):
         shape = self.shape
         ps = [
             pos.rotated(shape.body.angle) + shape.body.position
@@ -105,27 +125,53 @@ class Game:
         self._space.sleep_time_threshold = 0.5
         self._draw_options = pymunk.pygame_util.DrawOptions(self._screen)
         self._clock = pg.time.Clock()
+        self._speed_factor = 15
+        self._max_speed = 10
+        self._current_speed = 0
 
-        self._red_car = Car(position=(200, 200), color=(255, 0, 0))
+        self._red_car = Car(position=(300, 300), color=(255, 0, 0))
         self._space.add(self._red_car.body, self._red_car.shape)
-        self._blue_car = Car(position=(350, 350))
+        self._blue_car = Car(position=(350, 576))
         self._space.add(self._blue_car.body, self._blue_car.shape)
         self._shift_key_down = False
+        self._background_scroll = (0, 0)
+        self._distance_label = makeLabel("Distance: 0", 25, 10, 10, "white")
+        self._speed_label = makeLabel("Speed 0 / 10", 25, 10, 60, "white")
 
-    def _clear_screen(self):
-        self._screen.fill(pg.Color((100, 100, 100)))
+        showSprite(self._blue_car)
+        showSprite(self._red_car)
+
+    def _calculate_distance(self):
+        # dist = math.hypot(x1-x2, y1-y2)
+        x1, y1 = self._red_car.body.position
+        x2, y2 = self._blue_car.body.position
+        return int(math.hypot(x1-x2, y1-y2))
+
+    def _update_objects(self):
+        if self._background_scroll is not None:
+            scrollBackground(*self._background_scroll)
+        distance = self._calculate_distance()
+        changeLabel(self._distance_label, f"Distance: {distance}")
+        # self._screen.fill(pg.Color((100, 100, 100)))
 
     def _draw_objects(self):
+        self._blue_car.update()
+        self._red_car.update()
+        updateDisplay()
         # self._space.debug_draw(self._draw_options)
-        self._red_car.draw(self._screen)
-        self._blue_car.draw(self._screen)
+        # self._red_car.draw(self._screen)
+        # self._blue_car.draw(self._screen)
 
     def exit_game(self):
         pg.quit()
         sys.exit()
 
     def loop(self):
-        FPS = 50
+        setBackgroundImage("data/road_tarmac1.png")
+        showLabel(self._distance_label)
+        showLabel(self._speed_label)
+
+        FPS = 120
         while True:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
@@ -134,16 +180,14 @@ class Game:
                     self.on_keydown(event)
                 elif event.type == pg.KEYUP:
                     self.on_keyup(event)
-            self._clear_screen()
+            self._update_objects()
             self._draw_objects()
             self._space.step(1 / FPS)
-            pg.display.flip()
-            # Delay fixed time between frames
             self._clock.tick(FPS)
-            # pg.display.set_caption("fps: " + str(self._clock.get_fps()))
+            pg.display.set_caption("fps: " + str(self._clock.get_fps()))
 
     @property
-    def keys(self):
+    def keys_bak(self):
         move_factor = 150
         move_left = {
             "velocity": (-move_factor, 0),
@@ -172,12 +216,45 @@ class Game:
             pg.K_s: move_down
         }
 
+    def _increase_velocity(self):
+        if self._current_speed >= self._max_speed:
+            return
+
+        self._current_speed += 1
+        increment = self._max_speed / self._speed_factor
+        self._background_scroll = self._background_scroll[0], math.ceil(self._background_scroll[1] + increment)
+        changeLabel(self._speed_label, f"Speed: {self._current_speed} / {self._max_speed}")
+
+    def _decrease_velocity(self):
+        if self._background_scroll[1] < 1:
+            return
+
+        self._current_speed -= 1
+        increment = self._max_speed / self._speed_factor
+        self._background_scroll = self._background_scroll[0], math.floor(self._background_scroll[1] - increment)
+        changeLabel(self._speed_label, f"Speed: {self._current_speed} / {self._max_speed}")
+
+
+    @property
+    def keys(self):
+        move_left = {"movement": (self._speed_factor, 0),  "action": None}
+        move_right = {"movement": (-self._speed_factor, 0), "action": None}
+        move_up = {"movement": (0, self._speed_factor),  "action": self._increase_velocity}
+        move_down = {"movement": (0, -self._speed_factor),  "action": self._decrease_velocity}
+        return {
+            pg.K_LEFT: move_left,
+            pg.K_a: move_left,
+            pg.K_RIGHT: move_right,
+            pg.K_d: move_right,
+            pg.K_UP: move_up,
+            pg.K_w: move_up,
+            pg.K_DOWN: move_down,
+            pg.K_s: move_down
+        }
+
     def on_keydown(self, event):
-        # if event.key == pg.K_ESCAPE:
-        #     self.pause()
         if event.key in [pg.K_ESCAPE]:
             self.exit_game()
-
 
         if event.key == pg.K_RSHIFT:
             self._shift_key_down = True
@@ -190,7 +267,12 @@ class Game:
                 # self._blue_car.body.angular_velocity = direction
                 return
 
-            self._blue_car.move(self.keys[event.key]["velocity"])
+            if self.keys[event.key]["action"] is not None:
+                self.keys[event.key]["action"]()
+                return
+
+            self._background_scroll = tuple_add(self._background_scroll, self.keys[event.key]["movement"])
+            # self._blue_car.move(self.keys[event.key]["velocity"])
 
         if event.key == pg.K_SPACE:
             self._blue_car.body.angular_velocity = 0
@@ -208,7 +290,12 @@ class Game:
                 self._blue_car.body.angle = 0
                 return
 
-            self._blue_car.stop(self.keys[event.key]["velocity"])
+            if self.keys[event.key]["action"] is not None:
+                self.keys[event.key]["action"]()
+                return
+
+            self._background_scroll = tuple_subtract(self._background_scroll, self.keys[event.key]["movement"])
+            # self._blue_car.stop(self.keys[event.key]["velocity"])
 
         # if not self.win and not self.paused and not self.controls_paused:
         #     if event.key == pygame.K_UP or event.key == pygame.K_w:
