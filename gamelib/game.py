@@ -67,9 +67,11 @@ class Car(pg.sprite.Sprite):
         mass=1,
         position=(100, 200),
         color=(0, 0, 255),
-        collision_type=1
+        collision_type=1,
+        file_name=None
     ):
-        super().__init__()
+        # super().__init__()
+        pg.sprite.Sprite.__init__(self)
         self.body = pymunk.Body()
 
         self.body.position = Vec2d(*position)
@@ -77,15 +79,34 @@ class Car(pg.sprite.Sprite):
         self._width, self._height = size
         self.shape = pymunk.Poly.create_box(self.body, (size[0], size[1]), 0.0)
         self.shape.mass = mass
-        self.shape.elasticity = 0.1
+        self.shape.elasticity = 0
         self.shape.friction = 1
         self.shape.collision_type = collision_type
 
-        self.image = pg.Surface(size, pg.SRCALPHA)
-        self.image.fill(color)
+        if file_name is not None:
+            self._file_name = file_name
+            self._load_image()
+        else :
+            self.image = pg.Surface(size, pg.SRCALPHA)
+            self.image.fill(color)
+        # self.image = loadImage("data/cop.png")
         self.rect = self.image.get_rect(center=position)
         self._orig_image = self.image
         self.color = color
+
+    def _load_image(self):
+        img = loadImage(self._file_name)
+        x = 0
+        frameSurf = pygame.Surface((img.get_width(), img.get_height()), pygame.SRCALPHA, 32)
+        frameSurf.blit(img, (x, 0))
+        self.image = pygame.Surface.copy(frameSurf.copy())
+        self.rect = self.image.get_rect()
+        self.rect.topleft = (0, 0)
+        self.mask = pygame.mask.from_surface(self.image)
+        self.angle = 0
+        self.scale = 1
+
+
 
     @property
     def collision_type(self):
@@ -107,10 +128,10 @@ class Car(pg.sprite.Sprite):
 
 
     def update(self):
+        # pass
         self.image = pg.transform.rotozoom(
             self._orig_image,
-            -math.degrees(self.body.angle),
-            1
+            -math.degrees(self.body.angle), 1
             )
         self.rect = self.image.get_rect(center=self.body.position)
 
@@ -132,14 +153,14 @@ class Car(pg.sprite.Sprite):
         rect = self.image.get_rect(center=self.body.position)
         screen.blit(self.image, rect)
 
-    def stop(self, velocity):
-        new_vel = self.body.velocity - velocity
-        self.body.velocity -= velocity
+    # def stop(self, velocity):
+    #     new_vel = self.body.velocity - velocity
+    #     self.body.velocity -= velocity
 
 
-    def move(self, velocity):
-        new_vel = self.body.velocity + velocity
-        self.body.velocity += velocity
+    # def move(self, velocity):
+    #     new_vel = self.body.velocity + velocity
+    #     self.body.velocity += velocity
 
     def __str__(self):
         return str(self.body.position)
@@ -151,10 +172,10 @@ class EnemyCar(Car):
         self._have_collided = False
 
     def set_collided(self):
-        self.image = pg.Surface((self._width, self._height), pg.SRCALPHA)
-        self.image.fill((200, 0, 200))
-        self.rect = self.image.get_rect(center=self.body.position)
-        self._orig_image = self.image
+        # self.image = pg.Surface((self._width, self._height), pg.SRCALPHA)
+        # self.image.fill((200, 0, 200))
+        # self.rect = self.image.get_rect(center=self.body.position)
+        # self._orig_image = self.image
         self._have_collided = True
 
 
@@ -165,6 +186,8 @@ class EnemyCar(Car):
         new_pos = Vec2d(current[0] + background_scroll[0], current[1] + background_scroll[1])
         if background_scroll[0] == 0 and background_scroll[1] == 0:
             return
+
+        # new_vel =(new_pos - current) / 1 / FPS
         self.body.position = new_pos
         self.body.velocity = (new_pos - current) / 1 / FPS
 
@@ -209,26 +232,24 @@ class Game:
             pivot = pymunk.PivotJoint(self._space.static_body, car.body, (0, 0), (0, 0))
             self._space.add(pivot)
             pivot.max_bias = 0  # disable joint correction
-            pivot.max_force = 1800  # emulate linear friction
+            pivot.max_force = 1500  # emulate linear friction
 
             gear = pymunk.GearJoint(self._space.static_body, car.body, 0.0, 1.0)
             self._space.add(gear)
             gear.max_bias = 0  # disable joint correction
-            gear.max_force = 1800  # emulate angular friction
+            gear.max_force = 1500  # emulate angular friction
 
     def _reset(self):
         hideAll()
         self._space = pymunk.Space()
 
-        # self._space.iterations = 10
-        # self._space.sleep_time_threshold = 0.5
         self._speed_increment = 0
-        self._current_speed_tuple = (0, 0)
 
-        self._red_car = EnemyCar(position=(200, 200), color=(255, 0, 0))
+        # self._red_car = EnemyCar(position=(200, 200), color=(200, 0, 0))
+        self._red_car = EnemyCar(position=(200, 200), file_name="data/perp.png")
         self._space.add(self._red_car.body, self._red_car.shape)
-        self._blue_car = Car(position=self._player_position)
-        # self._blue_car.body.position_func = self._player_position_func
+        # self._blue_car = Car(position=self._player_position)
+        self._blue_car = Car(position=self._player_position, file_name="data/cop.png")
         self._space.add(self._blue_car.body, self._blue_car.shape)
         self._have_collided = False
 
@@ -288,7 +309,7 @@ class Game:
         changeLabel(self._enemy_angle, f"Perp Angle: {math.degrees(self._red_car.body.angle)}")
         changeLabel(self._self_angle, f"Cop Angle: {math.degrees(self._blue_car.body.angle)}")
         changeLabel(self._speed_label, f"Speed: {self._speed_increment} / {self._max_speed_increment}")
-        changeLabel(self._velocity_label, f"VEL: {self._blue_car.body.velocity}")
+        changeLabel(self._velocity_label, f"VEL: {self._red_car.body.angular_velocity}")
         self._red_car.update_for_player_movement(self._blue_car, self._background_scroll)
         self._red_car.perform_ai()
         self._blue_car.body.position = self._player_position
