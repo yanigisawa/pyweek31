@@ -15,6 +15,12 @@ from . import config
 FPS = 60
 
 
+def tuple_mult(tup1, factor):
+    return tup1[0] * factor, tup1[1] * factor
+
+def tuple_add_vect(tup1, tup2):
+    return pygame.Vector2((tup1[0] + tup2[0], tup1[1] + tup2[1]))
+
 
 def tuple_add(tup1, tup2):
     return tup1[0] + tup2[0], tup1[1] + tup2[1]
@@ -80,18 +86,25 @@ class Car(pg.sprite.Sprite):
         self.rect = self.image.get_rect(center=position)
         self._orig_image = self.image
         self.color = color
-        self._velocity = (0, 0)
-
-    def set_collided(self):
-        self.image = pg.Surface((self._width, self._height), pg.SRCALPHA)
-        self.image.fill((200, 0, 200))
-        self.rect = self.image.get_rect(center=self.body.position)
-        self._orig_image = self.image
-
 
     @property
     def collision_type(self):
         return self.shape.collision_type
+
+    def apply_impulse(self, direction):
+        move = pygame.Vector2((0, 0))
+        move = tuple_add_vect(move, direction)
+
+        impulse = tuple_mult(move, 500)
+        if move.length() > 0: move.normalize_ip()
+        self.body.apply_force_at_local_point(impulse, self.body.center_of_gravity)
+
+        # if you used pymunk before, you'll probably already know
+        # that you'll have to invert the y-axis to convert between
+        # the pymunk and the pygame coordinates.
+        self.pos = pygame.Vector2(self.body.position[0], -self.body.position[1] + config.SCREEN_HEIGHT)
+        self.rect.center = self.pos
+
 
     def update(self):
         self.image = pg.transform.rotozoom(
@@ -100,6 +113,7 @@ class Car(pg.sprite.Sprite):
             1
             )
         self.rect = self.image.get_rect(center=self.body.position)
+
 
     def draw(self, screen):
         shape = self.shape
@@ -133,29 +147,31 @@ class Car(pg.sprite.Sprite):
 class EnemyCar(Car):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.body.velocity = (0, -150)
+        self.body.velocity = (0, 0)
+        self._have_collided = False
+
+    def set_collided(self):
+        self.image = pg.Surface((self._width, self._height), pg.SRCALPHA)
+        self.image.fill((200, 0, 200))
+        self.rect = self.image.get_rect(center=self.body.position)
+        self._orig_image = self.image
+        self._have_collided = True
+
 
     def update_for_player_movement(self, player, background_scroll):
         # Right is negative
         # Left is positive
-        # self.body.position[0] -= background_scroll[0]
-        # self.body.position[1] -= background_scroll[1]
         current = self.body.position
         new_pos = Vec2d(current[0] + background_scroll[0], current[1] + background_scroll[1])
-        # new_pos = current.interpolate_to(player.body.position, 1)
         if background_scroll[0] == 0 and background_scroll[1] == 0:
             return
         self.body.position = new_pos
         self.body.velocity = (new_pos - current) / 1 / FPS
-        # print(self.body.position, background_scroll)
-        # dx, dy = player.body.position[0] - self.body.position[0], player.body.position[1] - self.body.position[1]
-        # dist = math.hypot (dx, dy)
-        # dx, dy = dx / dist, dy / dist # Normalize
-        # # Move along this normalized vector towards the player
-        # self.rect.x += dx * self.speed
-        # self.rect.y += dy * self.speed
+
 
     def perform_ai(self):
+        if self._have_collided:
+            return
         self.body.velocity = (0, -150)
 
 class Game:
@@ -163,25 +179,29 @@ class Game:
         self._screen = screen
         self._draw_options = pymunk.pygame_util.DrawOptions(self._screen)
         self._clock = pg.time.Clock()
-        self._speed_factor = 100
-        self._max_speed = 100
+        self._speed_factor = 5
+        self._speed_increment = 0
+        self._max_speed_increment = 10
         self._side_scroll_factor = 2
         self._player_position_speed = 5
         self._distance_label = makeLabel("Distance: 0", 25, 10, 10, "white")
         self._speed_label = makeLabel("Speed 0 / 10", 25, 10, 60, "white")
         self._enemy_angle = makeLabel("Perp: 0", 25, 10, 110, "white")
         self._self_angle = makeLabel("Cop: 0", 25, 10, 160, "white")
-        self._player_position = (350, 576)
+        self._velocity_label = makeLabel("Velocity: 0", 25, 10, 210, "white")
+        self._player_position = (350, 476)
 
         showLabel(self._distance_label)
         showLabel(self._speed_label)
         showLabel(self._enemy_angle)
         showLabel(self._self_angle)
+        showLabel(self._velocity_label)
         self._reset()
 
     def collision_post_solve(self, arbitor, space, data):
         self._red_car.set_collided()
-        # self._blue_car.set_collided()
+        self._have_collided = True
+        self._speed_increment = 0
 
     def add_pivots(self):
         cars = [self._red_car, self._blue_car]
@@ -189,34 +209,37 @@ class Game:
             pivot = pymunk.PivotJoint(self._space.static_body, car.body, (0, 0), (0, 0))
             self._space.add(pivot)
             pivot.max_bias = 0  # disable joint correction
-            pivot.max_force = 500  # emulate linear friction
+            pivot.max_force = 1800  # emulate linear friction
 
             gear = pymunk.GearJoint(self._space.static_body, car.body, 0.0, 1.0)
             self._space.add(gear)
             gear.max_bias = 0  # disable joint correction
-            gear.max_force = 500  # emulate angular friction
+            gear.max_force = 1800  # emulate angular friction
 
     def _reset(self):
         hideAll()
         self._space = pymunk.Space()
 
-        self._space.iterations = 10
-        self._space.sleep_time_threshold = 0.5
-        self._current_speed = 0
+        # self._space.iterations = 10
+        # self._space.sleep_time_threshold = 0.5
+        self._speed_increment = 0
+        self._current_speed_tuple = (0, 0)
 
-        self._red_car = EnemyCar(position=(300, 200), color=(255, 0, 0))
+        self._red_car = EnemyCar(position=(200, 200), color=(255, 0, 0))
         self._space.add(self._red_car.body, self._red_car.shape)
         self._blue_car = Car(position=self._player_position)
+        # self._blue_car.body.position_func = self._player_position_func
         self._space.add(self._blue_car.body, self._blue_car.shape)
+        self._have_collided = False
 
-        # self.add_pivots()
+        self.add_pivots()
 
         collision_handler = self._space.add_collision_handler(self._red_car.collision_type, self._blue_car.collision_type)
         collision_handler.post_solve = self.collision_post_solve
 
         self._shift_key_down = False
         self._background_scroll = (0, 0)
-        changeLabel(self._speed_label, f"Speed: {self._current_speed} / {self._max_speed}")
+        changeLabel(self._speed_label, f"Speed: {self._speed_increment} / {self._max_speed_increment}")
 
         showSprite(self._blue_car)
         showSprite(self._red_car)
@@ -226,6 +249,7 @@ class Game:
         x1, y1 = self._red_car.body.position
         x2, y2 = self._blue_car.body.position
         return int(math.hypot(x1-x2, y1-y2))
+
 
     def _correct_player_position(self):
         if self._blue_car.body.position == self._player_position:
@@ -240,7 +264,22 @@ class Game:
         self._blue_car.body.position = new
         self._blue_car.body.velocity = (new - self._blue_car.body.position) / 1 / FPS
 
+    def _update_scroll_for_velocity(self):
+        mult = .01
+        x_vel = -int(self._blue_car.body.velocity[0] * mult)
+        y_vel = -int(self._blue_car.body.velocity[1] * mult)
+        self._background_scroll = x_vel, y_vel
+
+    def _apply_velocity(self):
+        mult = 100
+        if self._speed_increment <=0:
+            return
+        if abs(self._blue_car.body.velocity[1]) < self._speed_increment * mult:
+            self._blue_car.apply_impulse((0, -self._speed_factor))
+
     def _update_objects(self):
+        self._update_scroll_for_velocity()
+        self._apply_velocity()
         if self._background_scroll is not None:
             scrollBackground(*self._background_scroll)
         # self._correct_player_position()
@@ -248,8 +287,11 @@ class Game:
         changeLabel(self._distance_label, f"Distance: {distance}")
         changeLabel(self._enemy_angle, f"Perp Angle: {math.degrees(self._red_car.body.angle)}")
         changeLabel(self._self_angle, f"Cop Angle: {math.degrees(self._blue_car.body.angle)}")
+        changeLabel(self._speed_label, f"Speed: {self._speed_increment} / {self._max_speed_increment}")
+        changeLabel(self._velocity_label, f"VEL: {self._blue_car.body.velocity}")
         self._red_car.update_for_player_movement(self._blue_car, self._background_scroll)
         self._red_car.perform_ai()
+        self._blue_car.body.position = self._player_position
         self._space.reindex_shapes_for_body(self._red_car.body)
         self._space.reindex_shapes_for_body(self._blue_car.body)
         # self._screen.fill(pg.Color((100, 100, 100)))
@@ -287,61 +329,33 @@ class Game:
             self._space.step(dt / 1000)
             pg.display.set_caption("fps: " + str(self._clock.get_fps()))
 
-    @property
-    def keys_bak(self):
-        move_factor = 150
-        move_left = {
-            "velocity": (-move_factor, 0),
-            "rotation": -1
-        }
-        move_right = {
-            "velocity": (move_factor, 0),
-            "rotation": 1
-        }
-        move_up = {
-            "velocity": (0, -move_factor),
-            "rotation": 0
-        }
-        move_down = {
-            "velocity": (0, move_factor),
-            "rotation": 0
-        }
-        return {
-            pg.K_LEFT: move_left,
-            pg.K_a: move_left,
-            pg.K_RIGHT: move_right,
-            pg.K_d: move_right,
-            pg.K_UP: move_up,
-            pg.K_w: move_up,
-            pg.K_DOWN: move_down,
-            pg.K_s: move_down
-        }
-
     def _increase_velocity(self):
-        if self._current_speed >= self._max_speed:
+        if self._speed_increment >= self._max_speed_increment:
             return
 
-        self._current_speed += 1
-        increment = self._max_speed / self._speed_factor
-        self._background_scroll = self._background_scroll[0], math.ceil(self._background_scroll[1] + increment)
-        changeLabel(self._speed_label, f"Speed: {self._current_speed} / {self._max_speed}")
+        self._speed_increment += 1
+        self._blue_car.apply_impulse((0, -self._speed_factor))
 
     def _decrease_velocity(self):
-        if self._background_scroll[1] < 1:
+        if self._speed_increment < 1:
+            self._background_scroll = self._background_scroll[0], 0
             return
 
-        self._current_speed -= 1
-        increment = self._max_speed / self._speed_factor
-        self._background_scroll = self._background_scroll[0], math.floor(self._background_scroll[1] - increment)
-        changeLabel(self._speed_label, f"Speed: {self._current_speed} / {self._max_speed}")
+        self._speed_increment -= 1
+        self._blue_car.apply_impulse((0, self._speed_factor))
 
+    def _increase_strafe_velocity(self):
+        self._blue_car.apply_impulse((self._speed_factor * 5, 0))
+
+    def _decrease_strafe_velocity(self):
+        self._blue_car.apply_impulse((-self._speed_factor * 5, 0))
 
     @property
     def keys(self):
-        move_left = {"movement": (self._side_scroll_factor, 0),  "action": None}
-        move_right = {"movement": (-self._side_scroll_factor, 0), "action": None}
-        move_up = {"movement": (0, self._speed_factor),  "action": self._increase_velocity}
-        move_down = {"movement": (0, -self._speed_factor),  "action": self._decrease_velocity}
+        move_left = {"movement": (-self._speed_factor, 0),  "action": self._decrease_strafe_velocity}
+        move_right = {"movement": (self._speed_factor, 0), "action": self._increase_strafe_velocity}
+        move_up = {"movement": (0, -self._speed_factor), "action": self._increase_velocity}
+        move_down = {"movement": (0, self._speed_factor),  "action": self._decrease_velocity}
         return {
             pg.K_LEFT: move_left,
             pg.K_a: move_left,
@@ -372,8 +386,8 @@ class Game:
                 self.keys[event.key]["action"]()
                 return
 
-            self._background_scroll = tuple_add(self._background_scroll, self.keys[event.key]["movement"])
-            # self._blue_car.move(self.keys[event.key]["velocity"])
+            # self._background_scroll = tuple_add(self._background_scroll, self.keys[event.key]["movement"])
+            # self._blue_car.apply_impulse(self.keys[event.key]["movement"])
 
         if event.key == pg.K_SPACE:
             self._blue_car.body.angular_velocity = 0
@@ -399,8 +413,8 @@ class Game:
                 self.keys[event.key]["action"]()
                 return
 
-            self._background_scroll = tuple_subtract(self._background_scroll, self.keys[event.key]["movement"])
-            # self._blue_car.stop(self.keys[event.key]["velocity"])
+            # self._background_scroll = tuple_subtract(self._background_scroll, self.keys[event.key]["movement"])
+            # self._blue_car.apply_impulse(self.keys[event.key]["movement"])
 
         # if not self.win and not self.paused and not self.controls_paused:
         #     if event.key == pygame.K_UP or event.key == pygame.K_w:
