@@ -9,6 +9,11 @@ verify_ssl = true
 pygame = "*"
 pymunk = "*"
 pillow = "*"
+black = "*"
+arcade = "*"
 
 [requires]
 python_version = "3.7"
+
+[pipenv]
+allow_prereleases = true
