@@ -40,8 +40,6 @@ class GameWindow:
 
         try:
             pg.mixer.init()
-            # pg.mixer.music.load("data/engine.ogg")
-            # pg.mixer.music.play(-1)
         except:
             pass
 
@@ -72,7 +70,6 @@ class Car(pg.sprite.Sprite):
         collision_type=1,
         file_name=None,
     ):
-        # super().__init__()
         pg.sprite.Sprite.__init__(self)
         self.body = pymunk.Body()
 
@@ -91,7 +88,6 @@ class Car(pg.sprite.Sprite):
         else:
             self.image = pg.Surface(size, pg.SRCALPHA)
             self.image.fill(color)
-        # self.image = loadImage("data/cop.png")
         self.rect = self.image.get_rect(center=position)
         self._orig_image = self.image
         self.color = color
@@ -121,12 +117,8 @@ class Car(pg.sprite.Sprite):
         impulse = tuple_mult(move, 500)
         if move.length() > 0:
             move.normalize_ip()
-        # self.body.apply_impulse_at_local_point(impulse, self.body.center_of_gravity)
         self.body.apply_force_at_local_point(impulse, self.body.center_of_gravity)
 
-        # if you used pymunk before, you'll probably already know
-        # that you'll have to invert the y-axis to convert between
-        # the pymunk and the pygame coordinates.
         self.pos = pygame.Vector2(
             self.body.position[0], -self.body.position[1] + config.SCREEN_HEIGHT
         )
@@ -144,22 +136,22 @@ class Car(pg.sprite.Sprite):
             move.normalize_ip()
         self.body.apply_impulse_at_local_point(impulse, self.body.center_of_gravity)
 
-        # if you used pymunk before, you'll probably already know
-        # that you'll have to invert the y-axis to convert between
-        # the pymunk and the pygame coordinates.
         self.pos = pygame.Vector2(
             self.body.position[0], -self.body.position[1] + config.SCREEN_HEIGHT
         )
         self.rect.center = self.pos
 
     def update(self):
-        # pass
         self.image = pg.transform.rotozoom(
             self._orig_image, -math.degrees(self.body.angle), 1
         )
         self.rect = self.image.get_rect(center=self.body.position)
 
     def draw(self, screen):
+        """
+        Useful for debugging the physics caculated when adjusting the enemy car's location
+        Not called during normal execution
+        """
         shape = self.shape
         ps = [
             pos.rotated(shape.body.angle) + shape.body.position
@@ -174,17 +166,6 @@ class Car(pg.sprite.Sprite):
         rect = self.image.get_rect(center=self.body.position)
         screen.blit(self.image, rect)
 
-    # def stop(self, velocity):
-    #     new_vel = self.body.velocity - velocity
-    #     self.body.velocity -= velocity
-
-    # def move(self, velocity):
-    #     new_vel = self.body.velocity + velocity
-    #     self.body.velocity += velocity
-
-    def __str__(self):
-        return str(self.body.position)
-
 
 class EnemyCar(Car):
     def __init__(self, *args, level=0, **kwargs):
@@ -196,10 +177,6 @@ class EnemyCar(Car):
             self.body.angle = math.radians(44)
 
     def set_collided(self):
-        # self.image = pg.Surface((self._width, self._height), pg.SRCALPHA)
-        # self.image.fill((200, 0, 200))
-        # self.rect = self.image.get_rect(center=self.body.position)
-        # self._orig_image = self.image
         self._have_collided = True
 
     def update_for_player_movement(self, player, background_scroll):
@@ -214,7 +191,6 @@ class EnemyCar(Car):
         if background_scroll[0] == 0 and background_scroll[1] == 0:
             return
 
-        # new_vel =(new_pos - current) / 1 / FPS
         self.body.position = new_pos
         self.body.velocity = (new_pos - current) / 1 / FPS
 
@@ -236,8 +212,6 @@ class Game:
         self._speed_factor = 5
         self._speed_increment = 0
         self._max_speed_increment = 10
-        self._side_scroll_factor = 2
-        self._player_position_speed = 5
         self._distance_label = makeLabel(
             "Distance: 0", 25, 10, 630, "white", background="black"
         )
@@ -260,7 +234,6 @@ class Game:
         self._mute_button = makeSprite(config.MUTE_BUTTON, altDims=(40, 40))
         self._mute_button.addImage(config.UNMUTE_BUTTON, altDims=(40, 40))
 
-        # self._unmute_button = makeSprite(config.UNMUTE_BUTTON)
         self._sound_on = sound_on
         self._stopped = False
         self.win = False
@@ -302,6 +275,7 @@ class Game:
     def _play_engine_idle(self):
         if not self._sound_on:
             return
+        self._engine_running.stop()
         self._engine_idle_sound.play(-1)
 
     def _play_engine_running(self):
@@ -371,8 +345,6 @@ class Game:
 
     def _apply_velocity(self):
         mult = 90
-        # if self._red_car.body.velocity[1] < 0:
-        #     self.
         if self._speed_increment <= 0:
             return
         if abs(self._blue_car.body.velocity[1]) < self._speed_increment * mult:
@@ -386,7 +358,6 @@ class Game:
             self._red_car.body.velocity == (0, 0)
             and self._red_car.body.angular_velocity == 0
         )
-        # print(self._red_car.body.velocity, self._red_car.body.angular_velocity)
         if not self._stopped:
             return
         self.win = abs(math.degrees(self._red_car.body.angle)) > 45
@@ -397,7 +368,6 @@ class Game:
         self._apply_velocity()
         if self._background_scroll is not None:
             scrollBackground(*self._background_scroll)
-        # self._update_background()
         distance = self._calculate_distance()
         changeLabel(self._distance_label, f"Distance: {distance}")
         changeLabel(
@@ -548,6 +518,7 @@ class Game:
             self._blue_car.body.velocity = 0, 0
             self._background_scroll = 0, 0
             self._speed_increment = 0
+            self._play_engine_idle()
 
         if event.key == pg.K_RSHIFT:
             self._shift_key_down = False

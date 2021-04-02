@@ -45,9 +45,13 @@ of the red card and attempt to spin the car to an angle of at least 45 degress i
 
 ## Known Issues
 
-My code for calculating the relative velocity between the cars is very buggy. You can see this at various lower speeds just after the collision. My code is attempting to adjust for player movements and recalculate the relative velocity between the player and enemy car. However the results can sometimes be seen that the cars will "crawl" across the screen as if they are still moving.
+My code for calculating the relative velocity between the cars is very buggy. You can see this at various speeds just after the collision. My code is attempting to adjust for player movements and recalculate the relative velocity between the player and enemy car. However the results can sometimes be seen that the cars will "crawl" across the screen as if they are still moving.
+
+Similarly the enemy car will "jump" around at higher speeds. Again this is due to my code attempting to correct for accelleration since the player's car isn't moving relative to the screen.
 
 ## Attributions
+
+Thanks to the developer of the "Apart" game, winner of PyWeek 30. I used that game's general folder / class structure for inspiration in building this game.
 
 ### pygame_functions
 
