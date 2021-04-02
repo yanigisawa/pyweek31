@@ -40,8 +40,8 @@ WASD or arrow keys for movement.
 
 ## Gameplay
 
-The goal of the game is to perform a [PIT Manuever](https://en.wikipedia.org/wiki/PIT_maneuver) on the red car. Move your cop car close to the rear quarter
-of the red card and attempt to spin the car to an angle of at least 45 degress in either direction. You win by getting greater than 45 degress, and lose if it is anything less.
+The goal of the game is to perform a [PIT Maneuver](https://en.wikipedia.org/wiki/PIT_maneuver) on the red car. Move your cop car close to the rear quarter
+of the red card and attempt to spin the car to an angle of at least 45 degrees in either direction. You win by spinning the car 45 degrees or more, and lose if it is anything less.
 
 ## Known Issues
 
