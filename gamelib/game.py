@@ -35,15 +35,16 @@ class GameWindow:
         screenSize(config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
         pg.display.set_caption('TODO')
         self.screen = pg.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
-        self.game()
-        # try:
-        #     pg.mixer.init()
-        #     pg.mixer.music.load(data.filepath("TODO.ogg"))
-        #     pg.mixer.music.play(-1)
-        # except:
-        #     pass
+        try:
+            pg.mixer.init()
+            # pg.mixer.music.load("data/engine.ogg")
+            # pg.mixer.music.play(-1)
+        except:
+            pass
+
         # self.restart = True
         # self.intro()
+        self.game()
 
     # def intro(self):
     #     while self.restart:
@@ -112,13 +113,30 @@ class Car(pg.sprite.Sprite):
     def collision_type(self):
         return self.shape.collision_type
 
-    def apply_impulse(self, direction):
+    def apply_force(self, direction):
         move = pygame.Vector2((0, 0))
         move = tuple_add_vect(move, direction)
 
         impulse = tuple_mult(move, 500)
         if move.length() > 0: move.normalize_ip()
+        # self.body.apply_impulse_at_local_point(impulse, self.body.center_of_gravity)
         self.body.apply_force_at_local_point(impulse, self.body.center_of_gravity)
+        # self.body.velocity = impulse
+
+        # if you used pymunk before, you'll probably already know
+        # that you'll have to invert the y-axis to convert between
+        # the pymunk and the pygame coordinates.
+        self.pos = pygame.Vector2(self.body.position[0], -self.body.position[1] + config.SCREEN_HEIGHT)
+        self.rect.center = self.pos
+
+    def apply_impulse(self, direction):
+        move = pygame.Vector2((0, 0))
+        move = tuple_add_vect(move, direction)
+
+        impulse = tuple_mult(move, 100)
+        if move.length() > 0: move.normalize_ip()
+        self.body.apply_impulse_at_local_point(impulse, self.body.center_of_gravity)
+        # self.body.apply_force_at_local_point(impulse, self.body.center_of_gravity)
 
         # if you used pymunk before, you'll probably already know
         # that you'll have to invert the y-axis to convert between
@@ -183,7 +201,9 @@ class EnemyCar(Car):
         # Right is negative
         # Left is positive
         current = self.body.position
-        new_pos = Vec2d(current[0] + background_scroll[0], current[1] + background_scroll[1])
+        mult = 1
+        new_pos = Vec2d(
+            current[0] + background_scroll[0] * mult, current[1] + background_scroll[1] * mult)
         if background_scroll[0] == 0 and background_scroll[1] == 0:
             return
 
@@ -213,6 +233,13 @@ class Game:
         self._self_angle = makeLabel("Cop: 0", 25, 10, 160, "white")
         self._velocity_label = makeLabel("Velocity: 0", 25, 10, 210, "white")
         self._player_position = (350, 476)
+        self._engine_start_sound = pygame.mixer.Sound(config.ENGINE_START)
+        self._engine_idle_sound = pg.mixer.Sound(config.ENGINE_IDLE)
+        self._engine_running = pg.mixer.Sound(config.ENGINE_RUNNING)
+        self._base_volume = 0.03
+        self._engine_running.set_volume(self._base_volume)
+        self._car_crash_sound = pg.mixer.Sound(config.CAR_CRASH)
+        self._sound_on = True
 
         showLabel(self._distance_label)
         showLabel(self._speed_label)
@@ -225,6 +252,7 @@ class Game:
         self._red_car.set_collided()
         self._have_collided = True
         self._speed_increment = 0
+        self._play_crashed()
 
     def add_pivots(self):
         cars = [self._red_car, self._blue_car]
@@ -232,15 +260,43 @@ class Game:
             pivot = pymunk.PivotJoint(self._space.static_body, car.body, (0, 0), (0, 0))
             self._space.add(pivot)
             pivot.max_bias = 0  # disable joint correction
-            pivot.max_force = 1500  # emulate linear friction
+            pivot.max_force = 2000 # emulate linear friction
 
             gear = pymunk.GearJoint(self._space.static_body, car.body, 0.0, 1.0)
             self._space.add(gear)
             gear.max_bias = 0  # disable joint correction
-            gear.max_force = 1500  # emulate angular friction
+            gear.max_force = 2000  # emulate angular friction
+
+    def _play_crashed(self):
+        if not self._sound_on:
+            return
+        self._engine_running.stop()
+        if not pg.mixer.get_busy():
+            self._car_crash_sound.play()
+
+    def _play_engine_idle(self):
+        if not self._sound_on:
+            return
+        self._engine_idle_sound.play(-1)
+
+    def _play_engine_running(self):
+        if not self._sound_on:
+            return
+        pg.mixer.stop()
+        self._engine_running.play(-1)
+
+    def _play_engine_start(self):
+        if not self._sound_on:
+            return
+        pg.mixer.stop()
+        self._engine_start_sound.play()
 
     def _reset(self):
         hideAll()
+        setBackgroundImage(config.BACKGROUND_IMAGE)
+        self._play_engine_start()
+        self._play_engine_idle()
+
         self._space = pymunk.Space()
 
         self._speed_increment = 0
@@ -266,7 +322,6 @@ class Game:
         showSprite(self._red_car)
 
     def _calculate_distance(self):
-        # dist = math.hypot(x1-x2, y1-y2)
         x1, y1 = self._red_car.body.position
         x2, y2 = self._blue_car.body.position
         return int(math.hypot(x1-x2, y1-y2))
@@ -286,24 +341,28 @@ class Game:
         self._blue_car.body.velocity = (new - self._blue_car.body.position) / 1 / FPS
 
     def _update_scroll_for_velocity(self):
-        mult = .01
-        x_vel = -int(self._blue_car.body.velocity[0] * mult)
-        y_vel = -int(self._blue_car.body.velocity[1] * mult)
+        y_mult = .01
+        x_mult = .03
+        x_vel = -math.ceil(self._blue_car.body.velocity[0] * x_mult)
+        y_vel = -math.ceil(self._blue_car.body.velocity[1] * y_mult)
         self._background_scroll = x_vel, y_vel
 
     def _apply_velocity(self):
-        mult = 100
+        mult = 80
+        # if self._red_car.body.velocity[1] < 0:
+        #     self.
         if self._speed_increment <=0:
             return
         if abs(self._blue_car.body.velocity[1]) < self._speed_increment * mult:
-            self._blue_car.apply_impulse((0, -self._speed_factor))
+            self._blue_car.apply_force((0, -self._speed_factor))
+
 
     def _update_objects(self):
         self._update_scroll_for_velocity()
         self._apply_velocity()
         if self._background_scroll is not None:
             scrollBackground(*self._background_scroll)
-        # self._correct_player_position()
+        # self._update_background()
         distance = self._calculate_distance()
         changeLabel(self._distance_label, f"Distance: {distance}")
         changeLabel(self._enemy_angle, f"Perp Angle: {math.degrees(self._red_car.body.angle)}")
@@ -332,10 +391,6 @@ class Game:
         sys.exit()
 
     def loop(self):
-        setBackgroundImage("data/road_tarmac1.png")
-        # showLabel(self._distance_label)
-        # showLabel(self._speed_label)
-
         while True:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
@@ -354,22 +409,28 @@ class Game:
         if self._speed_increment >= self._max_speed_increment:
             return
 
+        if self._speed_increment == 0:
+            self._play_engine_running()
+
+        self._engine_running.set_volume(self._base_volume + (self._speed_increment / 100))
         self._speed_increment += 1
-        self._blue_car.apply_impulse((0, -self._speed_factor))
+        self._blue_car.apply_force((0, -self._speed_factor))
 
     def _decrease_velocity(self):
         if self._speed_increment < 1:
             self._background_scroll = self._background_scroll[0], 0
+            self._play_engine_idle()
             return
 
         self._speed_increment -= 1
-        self._blue_car.apply_impulse((0, self._speed_factor))
+        self._engine_running.set_volume(self._base_volume - (self._speed_increment / 100))
+        self._blue_car.apply_force((0, self._speed_factor))
 
     def _increase_strafe_velocity(self):
-        self._blue_car.apply_impulse((self._speed_factor * 5, 0))
+        self._blue_car.apply_impulse((self._speed_factor * .5, 0))
 
     def _decrease_strafe_velocity(self):
-        self._blue_car.apply_impulse((-self._speed_factor * 5, 0))
+        self._blue_car.apply_impulse((-self._speed_factor * .5, 0))
 
     @property
     def keys(self):
@@ -392,31 +453,20 @@ class Game:
         if event.key in [pg.K_ESCAPE]:
             self.exit_game()
 
+        if event.key == pg.K_r:
+            self._reset()
+
+        if self._have_collided:
+            return
+
         if event.key == pg.K_RSHIFT:
             self._shift_key_down = True
-
-        if event.key in self.keys:
-            if self._shift_key_down:
-                self._blue_car.body.angle = 0
-                self._blue_car.body.angular_velocity = 0
-                # direction = self.keys[event.key]["rotation"] * (math.pi / 3)
-                # self._blue_car.body.angular_velocity = direction
-                return
-
-            if self.keys[event.key]["action"] is not None:
-                self.keys[event.key]["action"]()
-                return
-
-            # self._background_scroll = tuple_add(self._background_scroll, self.keys[event.key]["movement"])
-            # self._blue_car.apply_impulse(self.keys[event.key]["movement"])
 
         if event.key == pg.K_SPACE:
             self._blue_car.body.angular_velocity = 0
             self._blue_car.body.velocity = 0, 0
             self._background_scroll = 0, 0
 
-        if event.key == pg.K_r:
-            self._reset()
 
 
     def on_keyup(self, event):
@@ -428,6 +478,9 @@ class Game:
             if event.key in [pg.K_LEFT, pg.K_RIGHT] and self._shift_key_down:
                 self._blue_car.body.angular_velocity = 0
                 self._blue_car.body.angle = 0
+                return
+
+            if self._have_collided:
                 return
 
             if self.keys[event.key]["action"] is not None:
