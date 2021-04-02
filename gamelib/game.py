@@ -35,6 +35,8 @@ class GameWindow:
         screenSize(config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
         pg.display.set_caption("Pit Stop")
         self.screen = pg.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+        self._sound_on = True
+
         try:
             pg.mixer.init()
             # pg.mixer.music.load("data/engine.ogg")
@@ -50,20 +52,11 @@ class GameWindow:
         end = Ending(self.screen, results)
         return end.loop()
 
-    # def intro(self):
-    #     while self.restart:
-    #         title = Title(self, self.screen)
-    #         title.loop()
-    #         self.game()
-
     def game(self):
-        game = Game(self.screen)
-        return game.loop()
-        # if game.win:
-        #     pg.mixer.music.load(data.filepath("sad-trio.ogg"))
-        #     pg.mixer.music.play(-1)
-        #     ending = Ending(self, self.screen)
-        #     ending.loop()
+        game = Game(self.screen, self._sound_on)
+        results = game.loop()
+        self._sound_on = game._sound_on
+        return results
 
 
 class Car(pg.sprite.Sprite):
@@ -225,7 +218,7 @@ class EnemyCar(Car):
 
 
 class Game:
-    def __init__(self, screen):
+    def __init__(self, screen, sound_on=True):
         self._screen = screen
         self._draw_options = pymunk.pygame_util.DrawOptions(self._screen)
         self._clock = pg.time.Clock()
@@ -250,7 +243,11 @@ class Game:
         self._base_volume = 0.03
         self._engine_running.set_volume(self._base_volume)
         self._car_crash_sound = pg.mixer.Sound(config.CAR_CRASH)
-        self._sound_on = True
+        self._mute_button = makeSprite(config.MUTE_BUTTON, altDims=(40, 40))
+        self._mute_button.addImage(config.UNMUTE_BUTTON, altDims=(40, 40))
+
+        # self._unmute_button = makeSprite(config.UNMUTE_BUTTON)
+        self._sound_on = sound_on
         self._stopped = False
         self.win = False
         self.final_angle = 0
@@ -337,6 +334,10 @@ class Game:
 
         showSprite(self._blue_car)
         showSprite(self._red_car)
+        moveSprite(self._mute_button, 40, 600, True)
+        showSprite(self._mute_button)
+        if not self._sound_on:
+            nextSpriteImage(self._mute_button)
 
     def _calculate_distance(self):
         x1, y1 = self._red_car.body.position
@@ -411,6 +412,7 @@ class Game:
         self._space.reindex_shapes_for_body(self._blue_car.body)
 
     def _draw_objects(self):
+
         self._blue_car.update()
         self._red_car.update()
         updateDisplay()
@@ -428,6 +430,7 @@ class Game:
         hideLabel(self._distance_label)
         hideLabel(self._speed_label)
         hideLabel(self._enemy_angle)
+        hideSprite(self._mute_button)
 
     def loop(self):
         while not self._stopped:
@@ -438,6 +441,8 @@ class Game:
                     self.on_keydown(event)
                 elif event.type == pg.KEYUP:
                     self.on_keyup(event)
+                elif event.type == pg.MOUSEBUTTONUP:
+                    self.on_mouseup(event)
             self._update_objects()
             self._draw_objects()
             dt = self._clock.tick(FPS)
@@ -449,6 +454,14 @@ class Game:
             "success": self.win,
             "message": f"The Red Car's final angle was: {self.final_angle}",
         }
+
+    def on_mouseup(self, event):
+        pos = pygame.mouse.get_pos()
+        if self._mute_button.rect.collidepoint(pos):
+            if self._sound_on:
+                pg.mixer.stop()
+            self._sound_on = not self._sound_on
+            nextSpriteImage(self._mute_button)
 
     def _increase_velocity(self):
         if self._speed_increment >= self._max_speed_increment:
