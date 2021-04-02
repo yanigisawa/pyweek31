@@ -1,8 +1,7 @@
 import math
 import sys
+import random
 import pygame as pg
-from pygame.constants import SCRAP_SELECTION
-from pygame.display import update
 import pymunk
 import pymunk.pygame_util
 from pymunk.vec2d import Vec2d
@@ -33,7 +32,7 @@ class GameWindow:
 
     def __init__(self):
         screenSize(config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
-        pg.display.set_caption('TODO')
+        pg.display.set_caption('Pit Stop')
         self.screen = pg.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
         try:
             pg.mixer.init()
@@ -42,9 +41,13 @@ class GameWindow:
         except:
             pass
 
-        # self.restart = True
-        # self.intro()
-        self.game()
+        self.restart = True
+        while self.restart:
+            self.restart = self.end_screen(self.game())
+
+    def end_screen(self, results):
+        end = Ending(self.screen, results)
+        return end.loop()
 
     # def intro(self):
     #     while self.restart:
@@ -54,7 +57,7 @@ class GameWindow:
 
     def game(self):
         game = Game(self.screen)
-        game.loop()
+        return game.loop()
         # if game.win:
         #     pg.mixer.music.load(data.filepath("sad-trio.ogg"))
         #     pg.mixer.music.play(-1)
@@ -227,11 +230,9 @@ class Game:
         self._max_speed_increment = 10
         self._side_scroll_factor = 2
         self._player_position_speed = 5
-        self._distance_label = makeLabel("Distance: 0", 25, 10, 10, "white")
-        self._speed_label = makeLabel("Speed 0 / 10", 25, 10, 60, "white")
-        self._enemy_angle = makeLabel("Perp: 0", 25, 10, 110, "white")
-        self._self_angle = makeLabel("Cop: 0", 25, 10, 160, "white")
-        self._velocity_label = makeLabel("Velocity: 0", 25, 10, 210, "white")
+        self._distance_label = makeLabel("Distance: 0", 25, 10, 630, "white", background="black")
+        self._speed_label = makeLabel("Speed 0 / 10", 25, 10, 670, "white", background="black")
+        self._enemy_angle = makeLabel("Perp: 0", 25, 10, 710, "white", background="black")
         self._player_position = (350, 476)
         self._engine_start_sound = pygame.mixer.Sound(config.ENGINE_START)
         self._engine_idle_sound = pg.mixer.Sound(config.ENGINE_IDLE)
@@ -240,12 +241,13 @@ class Game:
         self._engine_running.set_volume(self._base_volume)
         self._car_crash_sound = pg.mixer.Sound(config.CAR_CRASH)
         self._sound_on = True
+        self._stopped = False
+        self.win = False
+        self.final_angle = 0
 
         showLabel(self._distance_label)
         showLabel(self._speed_label)
         showLabel(self._enemy_angle)
-        showLabel(self._self_angle)
-        showLabel(self._velocity_label)
         self._reset()
 
     def collision_post_solve(self, arbitor, space, data):
@@ -301,11 +303,11 @@ class Game:
 
         self._speed_increment = 0
 
-        # self._red_car = EnemyCar(position=(200, 200), color=(200, 0, 0))
-        self._red_car = EnemyCar(position=(200, 200), file_name="data/perp.png")
+        rand_x = random.randint(50, 700)
+        rand_y = random.randint(100, 350)
+        self._red_car = EnemyCar(position=(rand_x, rand_y), file_name=config.PERP_CAR)
         self._space.add(self._red_car.body, self._red_car.shape)
-        # self._blue_car = Car(position=self._player_position)
-        self._blue_car = Car(position=self._player_position, file_name="data/cop.png")
+        self._blue_car = Car(position=self._player_position, file_name=config.COP_CAR)
         self._space.add(self._blue_car.body, self._blue_car.shape)
         self._have_collided = False
 
@@ -343,8 +345,8 @@ class Game:
     def _update_scroll_for_velocity(self):
         y_mult = .01
         x_mult = .03
-        x_vel = -math.ceil(self._blue_car.body.velocity[0] * x_mult)
-        y_vel = -math.ceil(self._blue_car.body.velocity[1] * y_mult)
+        x_vel = -math.floor(self._blue_car.body.velocity[0] * x_mult)
+        y_vel = -math.floor(self._blue_car.body.velocity[1] * y_mult)
         self._background_scroll = x_vel, y_vel
 
     def _apply_velocity(self):
@@ -357,6 +359,18 @@ class Game:
             self._blue_car.apply_force((0, -self._speed_factor))
 
 
+    def _update_win_condition(self):
+        if not self._have_collided:
+            return
+
+        self._stopped = self._red_car.body.velocity == (0, 0) and self._red_car.body.angular_velocity == 0
+        # print(self._red_car.body.velocity, self._red_car.body.angular_velocity)
+        if not self._stopped:
+            return
+        self.win = abs(math.degrees(self._red_car.body.angle)) > 45
+        self.final_angle = int(abs(math.degrees(self._red_car.body.angle)))
+
+
     def _update_objects(self):
         self._update_scroll_for_velocity()
         self._apply_velocity()
@@ -365,16 +379,13 @@ class Game:
         # self._update_background()
         distance = self._calculate_distance()
         changeLabel(self._distance_label, f"Distance: {distance}")
-        changeLabel(self._enemy_angle, f"Perp Angle: {math.degrees(self._red_car.body.angle)}")
-        changeLabel(self._self_angle, f"Cop Angle: {math.degrees(self._blue_car.body.angle)}")
+        changeLabel(self._enemy_angle, f"Perp Angle: {int(abs(math.degrees(self._red_car.body.angle)))}")
         changeLabel(self._speed_label, f"Speed: {self._speed_increment} / {self._max_speed_increment}")
-        changeLabel(self._velocity_label, f"VEL: {self._red_car.body.angular_velocity}")
         self._red_car.update_for_player_movement(self._blue_car, self._background_scroll)
         self._red_car.perform_ai()
         self._blue_car.body.position = self._player_position
         self._space.reindex_shapes_for_body(self._red_car.body)
         self._space.reindex_shapes_for_body(self._blue_car.body)
-        # self._screen.fill(pg.Color((100, 100, 100)))
 
     def _draw_objects(self):
         self._blue_car.update()
@@ -390,8 +401,13 @@ class Game:
         pg.quit()
         sys.exit()
 
+    def hide_labels(self):
+        hideLabel(self._distance_label)
+        hideLabel(self._speed_label)
+        hideLabel(self._enemy_angle)
+
     def loop(self):
-        while True:
+        while not self._stopped:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     self.exit_game()
@@ -404,6 +420,14 @@ class Game:
             dt = self._clock.tick(FPS)
             self._space.step(dt / 1000)
             pg.display.set_caption("fps: " + str(self._clock.get_fps()))
+            self._update_win_condition()
+
+        # hideAll()
+        self.hide_labels()
+        return {
+            "success": self.win,
+            "message": f"The Red Car's final angle was: {self.final_angle}"
+        }
 
     def _increase_velocity(self):
         if self._speed_increment >= self._max_speed_increment:
@@ -499,3 +523,48 @@ class Game:
         #         self.character.stop_left()
         #     elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
         #         self.character.stop_right()
+
+class Ending:
+
+    def __init__(self, screen, results):
+        self._screen = screen
+        self.menu = pygame.surface.Surface((config.SCREEN_WIDTH, 300))
+        self.menu.fill((150, 150, 150))
+        title = "WIN" if results["success"] else "FAIL"
+        menu_y = config.SCREEN_HEIGHT - 200
+        x, y = 40, menu_y
+        color = "green" if results["success"] else "red"
+        self._title_label = makeLabel(title, 70, x, y, fontColour=color)
+
+        x, y = 40, menu_y + 80
+        self._results_label = makeLabel(results["message"], 25, x, y)
+
+        x, y = 40, menu_y + 140
+        self._retry_label = makeLabel("Retry? (y) - Esc to quit", 20, x, y)
+
+        showLabel(self._title_label)
+        showLabel(self._results_label)
+        showLabel(self._retry_label)
+        self._continue = True
+        self._retry = False
+
+
+    def loop(self):
+        while self._continue:
+            if keyPressed("y"):
+                self._retry = True
+                self._continue = False
+
+            if keyPressed("esc"):
+                self._continue = False
+
+            self._screen.blit(self.menu, (0, config.SCREEN_HEIGHT - 200))
+            updateDisplay()
+            tick(FPS)
+
+        hideLabel(self._title_label)
+        hideLabel(self._results_label)
+        hideLabel(self._retry_label)
+        return self._retry
+
+
