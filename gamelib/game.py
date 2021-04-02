@@ -54,7 +54,7 @@ class GameWindow:
         return end.loop()
 
     def game(self):
-        game = Game(self.screen, self._sound_on, self._level)
+        game = Game(self.screen, self._sound_on, level=self._level)
         results = game.loop()
         if results["success"]:
             self._level += 1
@@ -187,10 +187,13 @@ class Car(pg.sprite.Sprite):
 
 
 class EnemyCar(Car):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, level=0, **kwargs):
         super().__init__(*args, **kwargs)
         self.body.velocity = (0, 0)
+        self._level = level
         self._have_collided = False
+        if self._level == 0:
+            self.body.angle = math.radians(44)
 
     def set_collided(self):
         # self.image = pg.Surface((self._width, self._height), pg.SRCALPHA)
@@ -218,7 +221,11 @@ class EnemyCar(Car):
     def perform_ai(self):
         if self._have_collided:
             return
-        self.body.velocity = (0, -150)
+        max_vel = 200
+
+        vel = self._level / 5 * max_vel
+        vel = min(vel, max_vel)
+        self.body.velocity = (0, -vel)
 
 
 class Game:
@@ -240,6 +247,9 @@ class Game:
         self._enemy_angle = makeLabel(
             "Perp: 0", 25, 10, 710, "white", background="black"
         )
+        self._level_label = makeLabel(
+            f"Level: {level}", 25, 10, 590, "white", background="black"
+        )
         self._player_position = (350, 476)
         self._engine_start_sound = pygame.mixer.Sound(config.ENGINE_START)
         self._engine_idle_sound = pg.mixer.Sound(config.ENGINE_IDLE)
@@ -260,6 +270,7 @@ class Game:
         showLabel(self._distance_label)
         showLabel(self._speed_label)
         showLabel(self._enemy_angle)
+        showLabel(self._level_label)
         self._reset()
 
     def collision_post_solve(self, arbitor, space, data):
@@ -317,7 +328,9 @@ class Game:
 
         rand_x = random.randint(50, 700)
         rand_y = random.randint(100, 350)
-        self._red_car = EnemyCar(position=(rand_x, rand_y), file_name=config.PERP_CAR)
+        self._red_car = EnemyCar(
+            position=(rand_x, rand_y), file_name=config.PERP_CAR, level=self._level
+        )
         self._space.add(self._red_car.body, self._red_car.shape)
         self._blue_car = Car(position=self._player_position, file_name=config.COP_CAR)
         self._space.add(self._blue_car.body, self._blue_car.shape)
@@ -339,7 +352,7 @@ class Game:
 
         showSprite(self._blue_car)
         showSprite(self._red_car)
-        moveSprite(self._mute_button, 40, 600, True)
+        moveSprite(self._mute_button, 40, 560, True)
         showSprite(self._mute_button)
         if not self._sound_on:
             nextSpriteImage(self._mute_button)
@@ -422,6 +435,7 @@ class Game:
         hideLabel(self._distance_label)
         hideLabel(self._speed_label)
         hideLabel(self._enemy_angle)
+        hideLabel(self._level_label)
         hideSprite(self._mute_button)
 
     def loop(self):
@@ -567,7 +581,8 @@ class Ending:
         self._results_label = makeLabel(results["message"], 25, x, y)
 
         x, y = 40, menu_y + 140
-        self._retry_label = makeLabel("Retry? (y) - Esc to quit", 20, x, y)
+        retry = "Continue" if results["success"] else "Retry"
+        self._retry_label = makeLabel(f"{retry}? (y) - Esc to quit", 20, x, y)
 
         showLabel(self._title_label)
         showLabel(self._results_label)
