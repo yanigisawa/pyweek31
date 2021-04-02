@@ -8,9 +8,7 @@ verify_ssl = true
 [packages]
 pygame = "*"
 pymunk = "*"
-pillow = "*"
 black = "*"
-arcade = "*"
 
 [requires]
 python_version = "3.7"
