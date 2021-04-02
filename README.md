@@ -4,6 +4,9 @@
 
 This is an entry for PyWeek 31.
 
+![PIT Stop Screen Shot](/screen_shot.png?raw=true "PIT Stop Screen")
+
+
 ### Dependencies
 
 Code runs on PyGame using PyMunk for physics rendering.
