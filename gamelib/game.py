@@ -33,9 +33,10 @@ def tuple_subtract(tup1, tup2):
 class GameWindow:
     def __init__(self):
         screenSize(config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
-        pg.display.set_caption("Pit Stop")
+        pg.display.set_caption("PIT Stop")
         self.screen = pg.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
         self._sound_on = True
+        self._level = 0
 
         try:
             pg.mixer.init()
@@ -53,8 +54,10 @@ class GameWindow:
         return end.loop()
 
     def game(self):
-        game = Game(self.screen, self._sound_on)
+        game = Game(self.screen, self._sound_on, self._level)
         results = game.loop()
+        if results["success"]:
+            self._level += 1
         self._sound_on = game._sound_on
         return results
 
@@ -120,7 +123,6 @@ class Car(pg.sprite.Sprite):
             move.normalize_ip()
         # self.body.apply_impulse_at_local_point(impulse, self.body.center_of_gravity)
         self.body.apply_force_at_local_point(impulse, self.body.center_of_gravity)
-        # self.body.velocity = impulse
 
         # if you used pymunk before, you'll probably already know
         # that you'll have to invert the y-axis to convert between
@@ -135,10 +137,12 @@ class Car(pg.sprite.Sprite):
         move = tuple_add_vect(move, direction)
 
         impulse = tuple_mult(move, 100)
+        max_x_velocity = 50
+        if abs(self.body.velocity[0]) > max_x_velocity:
+            return
         if move.length() > 0:
             move.normalize_ip()
         self.body.apply_impulse_at_local_point(impulse, self.body.center_of_gravity)
-        # self.body.apply_force_at_local_point(impulse, self.body.center_of_gravity)
 
         # if you used pymunk before, you'll probably already know
         # that you'll have to invert the y-axis to convert between
@@ -218,7 +222,7 @@ class EnemyCar(Car):
 
 
 class Game:
-    def __init__(self, screen, sound_on=True):
+    def __init__(self, screen, sound_on=True, level=0):
         self._screen = screen
         self._draw_options = pymunk.pygame_util.DrawOptions(self._screen)
         self._clock = pg.time.Clock()
@@ -251,6 +255,7 @@ class Game:
         self._stopped = False
         self.win = False
         self.final_angle = 0
+        self._level = level
 
         showLabel(self._distance_label)
         showLabel(self._speed_label)
@@ -344,19 +349,6 @@ class Game:
         x2, y2 = self._blue_car.body.position
         return int(math.hypot(x1 - x2, y1 - y2))
 
-    def _correct_player_position(self):
-        if self._blue_car.body.position == self._player_position:
-            return
-        distance = self._blue_car.body.position.get_distance(self._player_position)
-        t = 1
-        if distance < self._player_position_speed:
-            self._blue_car.body.position = self._player_position
-        else:
-            t = self._player_position_speed / distance
-        new = self._blue_car.body.position.interpolate_to(self._player_position, t)
-        self._blue_car.body.position = new
-        self._blue_car.body.velocity = (new - self._blue_car.body.position) / 1 / FPS
-
     def _update_scroll_for_velocity(self):
         y_mult = 0.01
         x_mult = 0.03
@@ -365,7 +357,7 @@ class Game:
         self._background_scroll = x_vel, y_vel
 
     def _apply_velocity(self):
-        mult = 80
+        mult = 90
         # if self._red_car.body.velocity[1] < 0:
         #     self.
         if self._speed_increment <= 0:
@@ -397,7 +389,7 @@ class Game:
         changeLabel(self._distance_label, f"Distance: {distance}")
         changeLabel(
             self._enemy_angle,
-            f"Perp Angle: {int(abs(math.degrees(self._red_car.body.angle)))}",
+            f"Red Car Angle: {int(abs(math.degrees(self._red_car.body.angle)))}",
         )
         changeLabel(
             self._speed_label,
@@ -536,12 +528,12 @@ class Game:
         if event.key == pg.K_RSHIFT:
             self._shift_key_down = True
 
+    def on_keyup(self, event):
         if event.key == pg.K_SPACE:
             self._blue_car.body.angular_velocity = 0
             self._blue_car.body.velocity = 0, 0
             self._background_scroll = 0, 0
-
-    def on_keyup(self, event):
+            self._speed_increment = 0
 
         if event.key == pg.K_RSHIFT:
             self._shift_key_down = False
@@ -558,19 +550,6 @@ class Game:
             if self.keys[event.key]["action"] is not None:
                 self.keys[event.key]["action"]()
                 return
-
-            # self._background_scroll = tuple_subtract(self._background_scroll, self.keys[event.key]["movement"])
-            # self._blue_car.apply_impulse(self.keys[event.key]["movement"])
-
-        # if not self.win and not self.paused and not self.controls_paused:
-        #     if event.key == pygame.K_UP or event.key == pygame.K_w:
-        #         self.character.stop_up()
-        #     elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
-        #         self.character.stop_down()
-        #     elif event.key == pygame.K_LEFT or event.key == pygame.K_a:
-        #         self.character.stop_left()
-        #     elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
-        #         self.character.stop_right()
 
 
 class Ending:
@@ -599,6 +578,10 @@ class Ending:
     def loop(self):
         while self._continue:
             if keyPressed("y"):
+                self._retry = True
+                self._continue = False
+
+            if keyPressed("r"):
                 self._retry = True
                 self._continue = False
 
